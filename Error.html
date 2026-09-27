@@ -1,1 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>404 Not Found</title>
+  <style>
+    :root {
+      --bg: #0d0f12;
+      --text: #c9d1d9;
+      --accent: #ff3366;
+      --green: #00ff88;
+    }
 
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* CRT Scanline Effect */
+    body::before {
+      content: " ";
+      position: fixed;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), 
+                  radial-gradient(circle at 50% 50%, transparent 60%, rgba(0,0,0,0.8) 100%);
+      background-size: 100% 4px, 100% 100%;
+      pointer-events: none;
+      z-index: 100;
+    }
+
+    .error-container {
+      text-align: center;
+      max-width: 600px;
+      padding: 2rem;
+      position: relative;
+    }
+
+    h1 {
+      font-size: 6rem;
+      color: var(--accent);
+      letter-spacing: 5px;
+      cursor: pointer;
+      display: inline-block;
+      transition: transform 0.1s, color 0.3s;
+    }
+
+    h1:hover {
+      text-shadow: 0 0 10px rgba(255, 51, 102, 0.8);
+    }
+
+    .glitch-text {
+      animation: jitter 2s infinite;
+    }
+
+    @keyframes jitter {
+      0%, 90%, 100% { transform: translate(0, 0); }
+      92% { transform: translate(-2px, 1px); }
+      94% { transform: translate(2px, -1px); }
+      96% { transform: translate(-1px, -2px); }
+    }
+
+    p.msg {
+      font-size: 1.2rem;
+      margin-top: 1rem;
+      color: #8b949e;
+    }
+
+    .hint-box {
+      margin-top: 2rem;
+      font-size: 0.9rem;
+      color: #484f58;
+      min-height: 24px;
+    }
+
+    /* Hidden scanner in top left */
+    .secret-hotspot {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      width: 40px;
+      height: 40px;
+      border: 1px dashed transparent;
+      border-radius: 50%;
+      cursor: help;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .secret-hotspot:hover {
+      border-color: var(--green);
+      box-shadow: 0 0 15px var(--green);
+    }
+
+    /* Target overlay for when puzzle is solved */
+    .breach-screen {
+      position: fixed;
+      top: 0; left: 0; width: 100%; height: 100%;
+      background: #000;
+      color: var(--green);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.5s;
+      z-index: 200;
+    }
+
+    .breach-screen.active {
+      opacity: 1;
+      pointer-events: all;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Hidden Hotspot in Top-Left Corner -->
+  <div class="secret-hotspot" id="cornerHotspot" title="???"></div>
+
+  <div class="error-container">
+    <h1 id="errorTitle" class="glitch-text">404</h1>
+    <p class="msg" id="errorMsg">ERROR: FILE NOT FOUND</p>
+    <p style="margin-top: 0.5rem; font-size: 0.85rem; color: #30363d;">The requested URL was not found on this server.</p>
+
+    <div class="hint-box" id="hintBox">
+      SYSTEM STATUS: TERMINATED
+    </div>
+  </div>
+
+  <div class="breach-screen" id="breachOverlay">
+    <h2>[SYSTEM SECURITY BREACHED]</h2>
+    <p style="margin-top: 1rem;" id="breachStatus">ACCESSING CLASSIFIED DIRECTORY...</p>
+  </div>
+
+  <script>
+    // --- Sound FX ---
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    function playSound(freq, type = 'sine', duration = 0.1) {
+      if (ctx.state === 'suspended') ctx.resume();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    }
+
+    const errorTitle = document.getElementById("errorTitle");
+    const errorMsg = document.getElementById("errorMsg");
+    const hintBox = document.getElementById("hintBox");
+    const cornerHotspot = document.getElementById("cornerHotspot");
+    const breachOverlay = document.getElementById("breachOverlay");
+    const breachStatus = document.getElementById("breachStatus");
+
+    let clicks = 0;
+
+    // --- Interactive Element #1: Clicking 404 Header ---
+    errorTitle.addEventListener("click", () => {
+      clicks++;
+      playSound(150 + clicks * 80, 'sawtooth', 0.1);
+
+      // Visual reaction
+      errorTitle.style.transform = `scale(${1 + clicks * 0.05}) rotate(${(Math.random() - 0.5) * 10}deg)`;
+
+      if (clicks === 1) {
+        hintBox.innerText = "Narrator: Wait... why are you clicking an error message?";
+      } else if (clicks === 2) {
+        hintBox.innerText = "Narrator: Stop it! It's just a 404 page! Nothing to see!";
+        errorTitle.style.color = "#ff6600";
+      } else if (clicks === 3) {
+        hintBox.innerText = "Narrator: Stop shaking the server!";
+        errorMsg.innerText = "ERR0R: STACK OVERFLOW DETECTED";
+      } else if (clicks === 4) {
+        hintBox.innerText = "Narrator: ONE MORE TIME AND THE FIREWALL CRASHES!";
+        errorTitle.style.color = "var(--green)";
+      } else if (clicks >= 5) {
+        triggerBreach();
+      }
+    });
+
+    // --- Interactive Element #2: Corner Hotspot ---
+    cornerHotspot.addEventListener("click", () => {
+      playSound(800, 'sine', 0.2);
+      hintBox.innerText = "Narrator: Hey! How did you find that hidden node in the corner?!";
+      errorTitle.innerText = "301";
+      errorTitle.style.color = "var(--green)";
+      errorMsg.innerText = "REDIRECT OVERRIDE DETECTED";
+      setTimeout(triggerBreach, 1500);
+    });
+
+    // --- Breach Sequence to Final Real Secret Page ---
+    function triggerBreach() {
+      playSound(440, 'square', 0.3);
+      breachOverlay.classList.add("active");
+
+      let count = 3;
+      const interval = setInterval(() => {
+        count--;
+        if (count > 0) {
+          breachStatus.innerText = `ACCESSING REAL SECRET PAGE IN ${count}...`;
+          playSound(440 + (3 - count) * 100, 'sine', 0.1);
+        } else {
+          clearInterval(interval);
+          // Redirects to your final secret page
+          window.location.href = "nowthatsreal.html";
+        }
+      }, 1000);
+    }
+  </script>
+</body>
+</html>
