@@ -1,1 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pixel Quest: The Crystal Void</title>
+  <style>
+    :root {
+      --bg: #070913;
+      --panel: #121829;
+      --accent: #00ff88;
+      --gold: #ffcc00;
+      --danger: #ff3366;
+      --text: #e0e6ed;
+    }
 
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+    }
+
+    .game-wrapper {
+      background: var(--panel);
+      border: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 0 25px rgba(0, 255, 136, 0.2);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 840px;
+      width: 100%;
+    }
+
+    .header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+
+    .stats {
+      display: flex;
+      gap: 15px;
+      font-size: 0.95rem;
+    }
+
+    .stat-box {
+      background: #090c15;
+      padding: 4px 10px;
+      border: 1px solid #2a344d;
+      border-radius: 4px;
+    }
+
+    canvas {
+      background: #000;
+      border: 2px solid var(--accent);
+      image-rendering: pixelated;
+      width: 800px;
+      height: 450px;
+      max-width: 100%;
+      height: auto;
+    }
+
+    .controls-panel {
+      margin-top: 10px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    button, label.btn {
+      background: #1a233a;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+      padding: 8px 14px;
+      font-family: inherit;
+      font-size: 0.85rem;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button:hover, label.btn:hover {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 0 10px var(--accent);
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .instructions {
+      font-size: 0.8rem;
+      color: #8b9bb4;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="game-wrapper">
+    <div class="header">
+      <div style="color: var(--accent); font-size: 1.2rem;">⚡ PIXEL QUEST</div>
+      <div class="stats">
+        <div class="stat-box">LEVEL: <span id="uiLevel" style="color:var(--gold);">1</span>/5</div>
+        <div class="stat-box">HP: <span id="uiHp" style="color:var(--danger);">3/3</span></div>
+        <div class="stat-box">CRYSTALS: <span id="uiGems" style="color:var(--gold);">0</span></div>
+        <div class="stat-box">DEATHS: <span id="uiDeaths">0</span></div>
+      </div>
+    </div>
+
+    <!-- Pixel Canvas -->
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+
+    <div class="controls-panel">
+      <div class="instructions">
+        <b>CONTROLS:</b> [A/D] Move | [W/SPACE] Jump | [J/K] Attack
+      </div>
+
+      <div class="btn-group">
+        <button id="saveBtn">💾 Save File</button>
+        <label class="btn">
+          📂 Load File
+          <input type="file" id="loadInput" accept=".json" />
+        </label>
+        <button id="resetBtn" style="border-color: var(--danger); color: var(--danger);">🔄 Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Web Audio Sound Generator
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function sound(freq, type = 'sine', dur = 0.1) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    }
+
+    // Game State
+    let gameState = {
+      level: 1,
+      hp: 3,
+      maxHp: 3,
+      gems: 0,
+      deaths: 0,
+      checkpointX: 50,
+      checkpointY: 350
+    };
+
+    const keys = {};
+    window.addEventListener('keydown', e => keys[e.code] = true);
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // Player Object
+    const player = {
+      x: 50, y: 350, w: 20, h: 28,
+      vx: 0, vy: 0,
+      speed: 3.8,
+      jumpForce: -9.5,
+      grounded: false,
+      attacking: false,
+      attackTimer: 0,
+      facing: 'right',
+      invulnerable: 0
+    };
+
+    // Level Designs
+    let platforms = [];
+    let spikes = [];
+    let gems = [];
+    let enemies = [];
+    let exitPortal = null;
+
+    function buildLevel(lvl) {
+      platforms = [];
+      spikes = [];
+      gems = [];
+      enemies = [];
+
+      // Base Ground
+      platforms.push({x: 0, y: 420, w: 800, h: 30});
+
+      if (lvl === 1) {
+        // Level 1: Training Grounds
+        platforms.push({x: 150, y: 340, w: 120, h: 20});
+        platforms.push({x: 320, y: 270, w: 140, h: 20});
+        platforms.push({x: 520, y: 200, w: 120, h: 20});
+        platforms.push({x: 680, y: 130, w: 100, h: 20});
+
+        gems.push({x: 200, y: 310, taken: false});
+        gems.push({x: 380, y: 240, taken: false});
+        gems.push({x: 580, y: 170, taken: false});
+
+        enemies.push({x: 340, y: 245, w: 20, h: 25, minX: 320, maxX: 440, vx: 1.2});
+        exitPortal = {x: 730, y: 80, w: 30, h: 50};
+      } 
+      else if (lvl === 2) {
+        // Level 2: Spike Caverns
+        platforms.push({x: 100, y: 360, w: 80, h: 20});
+        platforms.push({x: 240, y: 300, w: 80, h: 20});
+        platforms.push({x: 380, y: 240, w: 80, h: 20});
+        platforms.push({x: 520, y: 180, w: 80, h: 20});
+        platforms.push({x: 660, y: 120, w: 100, h: 20});
+
+        spikes.push({x: 180, y: 405, w: 60, h: 15});
+        spikes.push({x: 320, y: 405, w: 60, h: 15});
+        spikes.push({x: 460, y: 405, w: 60, h: 15});
+
+        gems.push({x: 270, y: 270, taken: false});
+        gems.push({x: 550, y: 150, taken: false});
+
+        enemies.push({x: 250, y: 275, w: 20, h: 25, minX: 240, maxX: 310, vx: 1.5});
+        enemies.push({x: 530, y: 155, w: 20, h: 25, minX: 520, maxX: 580, vx: 1.8});
+
+        exitPortal = {x: 700, y: 70, w: 30, h: 50};
+      }
+      else if (lvl === 3) {
+        // Level 3: The Vertical Shaft
+        platforms.push({x: 100, y: 350, w: 100, h: 20});
+        platforms.push({x: 250, y: 290, w: 100, h: 20});
+        platforms.push({x: 100, y: 220, w: 100, h: 20});
+        platforms.push({x: 250, y: 150, w: 100, h: 20});
+        platforms.push({x: 450, y: 120, w: 250, h: 20});
+
+        spikes.push({x: 0, y: 405, w: 800, h: 15}); // Ground is full spikes!
+
+        gems.push({x: 140, y: 190, taken: false});
+        gems.push({x: 290, y: 120, taken: false});
+        gems.push({x: 550, y: 90, taken: false});
+
+        enemies.push({x: 480, y: 95, w: 20, h: 25, minX: 450, maxX: 680, vx: 2.2});
+        exitPortal = {x: 650, y: 70, w: 30, h: 50};
+      }
+      else if (lvl === 4) {
+        // Level 4: Moving Gauntlet
+        platforms.push({x: 120, y: 350, w: 70, h: 20});
+        platforms.push({x: 260, y: 280, w: 70, h: 20});
+        platforms.push({x: 400, y: 220, w: 70, h: 20});
+        platforms.push({x: 540, y: 160, w: 70, h: 20});
+        platforms.push({x: 680, y: 100, w: 90, h: 20});
+
+        spikes.push({x: 200, y: 405, w: 400, h: 15});
+
+        gems.push({x: 290, y: 250, taken: false});
+        gems.push({x: 570, y: 130, taken: false});
+
+        enemies.push({x: 130, y: 325, w: 20, h: 25, minX: 120, maxX: 180, vx: 2.5});
+        enemies.push({x: 410, y: 195, w: 20, h: 25, minX: 400, maxX: 460, vx: 2.5});
+
+        exitPortal = {x: 710, y: 50, w: 30, h: 50};
+      }
+      else if (lvl === 5) {
+        // Level 5: Boss Arena!
+        platforms.push({x: 250, y: 300, w: 300, h: 20});
+        
+        // Boss Monster
+        enemies.push({x: 500, y: 360, w: 50, h: 60, minX: 100, maxX: 700, vx: 3.2, isBoss: true, bossHp: 5});
+
+        gems.push({x: 400, y: 260, taken: false});
+        exitPortal = {x: 720, y: 370, w: 30, h: 50};
+      }
+
+      // Reset Player position
+      player.x = gameState.checkpointX;
+      player.y = gameState.checkpointY;
+      player.vx = 0;
+      player.vy = 0;
+    }
+
+    // Core Game Loop
+    function update() {
+      // Input Movement
+      if (keys['KeyA'] || keys['ArrowLeft']) {
+        player.vx = -player.speed;
+        player.facing = 'left';
+      } else if (keys['KeyD'] || keys['ArrowRight']) {
+        player.vx = player.speed;
+        player.facing = 'right';
+      } else {
+        player.vx *= 0.7; // Friction
+      }
+
+      if ((keys['KeyW'] || keys['Space'] || keys['ArrowUp']) && player.grounded) {
+        player.vy = player.jumpForce;
+        player.grounded = false;
+        sound(300, 'square', 0.15);
+      }
+
+      // Attack
+      if ((keys['KeyJ'] || keys['KeyK']) && !player.attacking) {
+        player.attacking = true;
+        player.attackTimer = 15;
+        sound(180, 'sawtooth', 0.1);
+      }
+
+      if (player.attackTimer > 0) {
+        player.attackTimer--;
+        if (player.attackTimer === 0) player.attacking = false;
+      }
+
+      // Gravity
+      player.vy += 0.45;
+
+      // X Movement & Collision
+      player.x += player.vx;
+      platforms.forEach(p => {
+        if (checkCollide(player, p)) {
+          if (player.vx > 0) player.x = p.x - player.w;
+          if (player.vx < 0) player.x = p.x + p.w;
+        }
+      });
+
+      // Y Movement & Collision
+      player.y += player.vy;
+      player.grounded = false;
+      platforms.forEach(p => {
+        if (checkCollide(player, p)) {
+          if (player.vy > 0) {
+            player.y = p.y - player.h;
+            player.vy = 0;
+            player.grounded = true;
+          } else if (player.vy < 0) {
+            player.y = p.y + p.h;
+            player.vy = 0;
+          }
+        }
+      });
+
+      // Canvas Boundaries
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.w > canvas.width) player.x = canvas.width - player.w;
+
+      // Spike Collision
+      spikes.forEach(s => {
+        if (checkCollide(player, s)) hurtPlayer();
+      });
+
+      // Gem Collection
+      gems.forEach(g => {
+        if (!g.taken && checkCollide(player, {x: g.x, y: g.y, w: 15, h: 15})) {
+          g.taken = true;
+          gameState.gems++;
+          sound(880, 'sine', 0.2);
+          updateUI();
+        }
+      });
+
+      // Enemy Patrol & Collisions
+      enemies.forEach((e, idx) => {
+        e.x += e.vx;
+        if (e.x <= e.minX || e.x + e.w >= e.maxX) e.vx *= -1;
+
+        // Player Attack Check
+        if (player.attacking) {
+          const attackBox = {
+            x: player.facing === 'right' ? player.x + player.w : player.x - 25,
+            y: player.y,
+            w: 25,
+            h: player.h
+          };
+
+          if (checkCollide(attackBox, e)) {
+            sound(600, 'sawtooth', 0.2);
+            if (e.isBoss) {
+              e.bossHp--;
+              player.vx = player.facing === 'right' ? -4 : 4; // Knockback
+              if (e.bossHp <= 0) enemies.splice(idx, 1);
+            } else {
+              enemies.splice(idx, 1);
+            }
+          }
+        }
+
+        // Enemy Hit Player
+        if (checkCollide(player, e)) hurtPlayer();
+      });
+
+      // Exit Portal Check
+      if (exitPortal && checkCollide(player, exitPortal)) {
+        if (gameState.level < 5) {
+          gameState.level++;
+          sound(523, 'triangle', 0.3);
+          buildLevel(gameState.level);
+          updateUI();
+        } else {
+          alert('🎉 VICTORY! You completed Pixel Quest and saved the void!');
+          gameState.level = 1;
+          buildLevel(1);
+          updateUI();
+        }
+      }
+
+      // Death by falling
+      if (player.y > canvas.height) hurtPlayer();
+
+      if (player.invulnerable > 0) player.invulnerable--;
+    }
+
+    function hurtPlayer() {
+      if (player.invulnerable > 0) return;
+      gameState.hp--;
+      gameState.deaths++;
+      sound(120, 'sawtooth', 0.3);
+      player.invulnerable = 40;
+      
+      if (gameState.hp <= 0) {
+        gameState.hp = gameState.maxHp;
+        player.x = gameState.checkpointX;
+        player.y = gameState.checkpointY;
+      }
+      updateUI();
+    }
+
+    function checkCollide(a, b) {
+      return a.x < b.x + b.w &&
+             a.x + a.w > b.x &&
+             a.y < b.y + b.h &&
+             a.y + a.h > b.y;
+    }
+
+    // Render Graphics
+    function render() {
+      // Clear Screen
+      ctx.fillStyle = '#070913';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      // Render Platforms
+      ctx.fillStyle = '#1e293b';
+      platforms.forEach(p => {
+        ctx.fillRect(p.x, p.y, p.w, p.h);
+        ctx.fillStyle = '#00ff88';
+        ctx.fillRect(p.x, p.y, p.w, 3); // Green top edge
+        ctx.fillStyle = '#1e293b';
+      });
+
+      // Render Spikes
+      ctx.fillStyle = '#ff3366';
+      spikes.forEach(s => {
+        for (let x = s.x; x < s.x + s.w; x += 10) {
+          ctx.beginPath();
+          ctx.moveTo(x, s.y + s.h);
+          ctx.lineTo(x + 5, s.y);
+          ctx.lineTo(x + 10, s.y + s.h);
+          ctx.fill();
+        }
+      });
+
+      // Render Gems
+      ctx.fillStyle = '#ffcc00';
+      gems.forEach(g => {
+        if (!g.taken) {
+          ctx.fillRect(g.x + 3, g.y, 9, 15);
+          ctx.fillRect(g.x, g.y + 3, 15, 9);
+        }
+      });
+
+      // Render Portal
+      if (exitPortal) {
+        ctx.fillStyle = '#9333ea';
+        ctx.fillRect(exitPortal.x, exitPortal.y, exitPortal.w, exitPortal.h);
+        ctx.fillStyle = '#c084fc';
+        ctx.fillRect(exitPortal.x + 5, exitPortal.y + 5, exitPortal.w - 10, exitPortal.h - 10);
+      }
+
+      // Render Enemies
+      enemies.forEach(e => {
+        ctx.fillStyle = e.isBoss ? '#dc2626' : '#f97316';
+        ctx.fillRect(e.x, e.y, e.w, e.h);
+        // Eyes
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(e.x + 3, e.y + 5, 4, 4);
+        ctx.fillRect(e.x + e.w - 7, e.y + 5, 4, 4);
+      });
+
+      // Render Player
+      if (player.invulnerable % 4 < 2) {
+        ctx.fillStyle = '#00ff88';
+        ctx.fillRect(player.x, player.y, player.w, player.h);
+
+        // Player Eyes
+        ctx.fillStyle = '#000';
+        const eyeX = player.facing === 'right' ? player.x + 12 : player.x + 3;
+        ctx.fillRect(eyeX, player.y + 6, 4, 4);
+
+        // Attack Slash Animation
+        if (player.attacking) {
+          ctx.fillStyle = '#ffcc00';
+          const slashX = player.facing === 'right' ? player.x + player.w : player.x - 20;
+          ctx.fillRect(slashX, player.y + 5, 20, 15);
+        }
+      }
+    }
+
+    function updateUI() {
+      document.getElementById('uiLevel').innerText = gameState.level;
+      document.getElementById('uiHp').innerText = `${gameState.hp}/${gameState.maxHp}`;
+      document.getElementById('uiGems').innerText = gameState.gems;
+      document.getElementById('uiDeaths').innerText = gameState.deaths;
+    }
+
+    // Main Game Loop
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // SAVE / LOAD SYSTEM (JSON FILE)
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const saveData = JSON.stringify(gameState, null, 2);
+      const blob = new Blob([saveData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `PixelQuest_Save_Lvl${gameState.level}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('loadInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const loadedData = JSON.parse(event.target.result);
+          if (loadedData.level && loadedData.hp !== undefined) {
+            gameState = loadedData;
+            buildLevel(gameState.level);
+            updateUI();
+            alert('🎮 Save File Loaded Successfully!');
+          } else {
+            alert('❌ Invalid Save File!');
+          }
+        } catch (err) {
+          alert('❌ Error reading save file!');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+      if (confirm('Are you sure you want to restart your progress?')) {
+        gameState = { level: 1, hp: 3, maxHp: 3, gems: 0, deaths: 0, checkpointX: 50, checkpointY: 350 };
+        buildLevel(1);
+        updateUI();
+      }
+    });
+
+    // Start Game
+    buildLevel(1);
+    updateUI();
+    loop();
+  </script>
+</body>
+</html>
