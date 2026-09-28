@@ -1,1 +1,679 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Minecraft Quest: Dig & Build</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --panel: #161b22;
+      --accent: #55ff55;
+      --gold: #ffaa00;
+      --danger: #ff5555;
+      --text: #f0f6fc;
+      --border: #30363d;
+    }
 
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: 'Courier New', Courier, monospace;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+    }
+
+    .game-wrapper {
+      background: var(--panel);
+      border: 3px solid var(--border);
+      border-radius: 8px;
+      padding: 15px;
+      box-shadow: 0 0 25px rgba(0, 0, 0, 0.8);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      max-width: 840px;
+      width: 100%;
+    }
+
+    .header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      font-weight: bold;
+    }
+
+    .stats {
+      display: flex;
+      gap: 12px;
+      font-size: 0.9rem;
+    }
+
+    .stat-box {
+      background: #0d1117;
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    canvas {
+      background: #000;
+      border: 2px solid var(--border);
+      image-rendering: pixelated;
+      width: 800px;
+      height: 450px;
+      max-width: 100%;
+      height: auto;
+      cursor: crosshair;
+    }
+
+    /* Hotbar Style UI */
+    .hotbar {
+      margin-top: 10px;
+      display: flex;
+      gap: 6px;
+      background: #0d1117;
+      padding: 6px;
+      border-radius: 6px;
+      border: 2px solid var(--border);
+    }
+
+    .slot {
+      width: 45px;
+      height: 45px;
+      background: #21262d;
+      border: 2px solid #30363d;
+      border-radius: 4px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 0.75rem;
+      position: relative;
+    }
+
+    .slot.active {
+      border-color: var(--gold);
+      background: #30363d;
+      box-shadow: 0 0 8px var(--gold);
+    }
+
+    .slot-count {
+      position: absolute;
+      bottom: 2px;
+      right: 4px;
+      font-size: 0.7rem;
+      color: #fff;
+      font-weight: bold;
+    }
+
+    .controls-panel {
+      margin-top: 12px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    button, label.btn {
+      background: #21262d;
+      color: var(--accent);
+      border: 1px solid var(--border);
+      padding: 8px 12px;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    button:hover, label.btn:hover {
+      background: var(--accent);
+      color: #000;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .instructions {
+      font-size: 0.75rem;
+      color: #8b949e;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="game-wrapper">
+    <div class="header">
+      <div style="color: var(--accent); font-size: 1.1rem;">⛏️ MINECRAFT QUEST</div>
+      <div class="stats">
+        <div class="stat-box">HP: <span id="uiHp" style="color:var(--danger);">100</span></div>
+        <div class="stat-box">TOOL: <span id="uiTool" style="color:var(--gold);">Wood Pick</span></div>
+        <div class="stat-box">DEPTH: <span id="uiDepth">0m</span></div>
+      </div>
+    </div>
+
+    <!-- Main Game Canvas -->
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+
+    <!-- Minecraft Hotbar -->
+    <div class="hotbar" id="hotbar">
+      <div class="slot active" data-slot="1">🪵<span class="slot-count" id="cnt-wood">0</span></div>
+      <div class="slot" data-slot="2">🟫<span class="slot-count" id="cnt-dirt">0</span></div>
+      <div class="slot" data-slot="3">🩶<span class="slot-count" id="cnt-stone">0</span></div>
+      <div class="slot" data-slot="4">💎<span class="slot-count" id="cnt-diamond">0</span></div>
+      <div class="slot" data-slot="5">🗡️<span class="slot-count" id="cnt-sword">1</span></div>
+      <div class="slot" data-slot="6">🧨<span class="slot-count" id="cnt-tnt">0</span></div>
+    </div>
+
+    <div class="controls-panel">
+      <div class="instructions">
+        <b>KEYS:</b> [A/D] Move | [W/SPACE] Jump | [LEFT CLICK] Mine / Attack | [RIGHT CLICK] Place Block | [1-6] Select Hotbar
+      </div>
+
+      <div class="btn-group">
+        <button id="craftBtn">🛠️ Craft Menu</button>
+        <button id="saveBtn">💾 Save World</button>
+        <label class="btn">
+          📂 Load World
+          <input type="file" id="loadInput" accept=".json" />
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // Web Audio Sound Generator
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    function sound(freq, type = 'sine', dur = 0.1) {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + dur);
+    }
+
+    // World Map Settings (Grid of 25x25px blocks)
+    const BLOCK_SIZE = 25;
+    const COLS = 32;
+    const ROWS = 60; // Deep world to dig into!
+    let world = [];
+
+    // Block ID Legend
+    const AIR = 0, DIRT = 1, GRASS = 2, STONE = 3, COAL = 4, IRON = 5, DIAMOND = 6, WOOD = 7, LEAVES = 8, TNT = 9;
+
+    const BLOCK_COLORS = {
+      [AIR]: '#87CEEB',     // Sky
+      [DIRT]: '#8B4513',    // Dirt
+      [GRASS]: '#2e8b57',   // Grass Top
+      [STONE]: '#708090',   // Stone
+      [COAL]: '#2f4f4f',    // Coal Ore
+      [IRON]: '#d2b48c',    // Iron Ore
+      [DIAMOND]: '#00ffff', // Diamond Ore
+      [WOOD]: '#a0522d',    // Wood Trunk
+      [LEAVES]: '#228b22',  // Leaves
+      [TNT]: '#ff0000'      // TNT
+    };
+
+    // Inventory & Tools State
+    let inventory = {
+      wood: 0,
+      dirt: 0,
+      stone: 0,
+      diamond: 0,
+      sword: 1,
+      tnt: 0,
+      pickTier: 1 // 1: Wood, 2: Stone, 3: Iron, 4: Diamond
+    };
+
+    let selectedSlot = 1;
+
+    // Player Object
+    const player = {
+      x: 400, y: 100, w: 18, h: 24,
+      vx: 0, vy: 0,
+      speed: 3.5,
+      jumpForce: -8.5,
+      hp: 100,
+      maxHp: 100,
+      grounded: false
+    };
+
+    // Camera Scroll offset
+    let cameraY = 0;
+
+    // Enemy Mobs
+    let mobs = [];
+
+    // Keys State
+    const keys = {};
+    window.addEventListener('keydown', e => {
+      keys[e.code] = true;
+      if (e.key >= '1' && e.key <= '6') selectSlot(parseInt(e.key));
+    });
+    window.addEventListener('keyup', e => keys[e.code] = false);
+
+    // Mouse Tracking for Digging/Building
+    let mouse = { x: 0, y: 0, isDown: false, rightDown: false };
+    canvas.addEventListener('mousemove', e => {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = e.clientX - rect.left;
+      mouse.y = e.clientY - rect.top + cameraY;
+    });
+
+    canvas.addEventListener('mousedown', e => {
+      if (e.button === 0) mouse.isDown = true;
+      if (e.button === 2) mouse.rightDown = true;
+    });
+
+    canvas.addEventListener('mouseup', e => {
+      if (e.button === 0) mouse.isDown = false;
+      if (e.button === 2) mouse.rightDown = false;
+    });
+
+    canvas.addEventListener('contextmenu', e => e.preventDefault()); // Prevent right click menu
+
+    // Generate Procedural Underground World
+    function generateWorld() {
+      world = [];
+      mobs = [];
+      for (let r = 0; r < ROWS; r++) {
+        world[r] = [];
+        for (let c = 0; c < COLS; c++) {
+          if (r < 8) {
+            world[r][c] = AIR; // Sky
+          } else if (r === 8) {
+            world[r][c] = GRASS; // Surface Grass
+          } else if (r < 18) {
+            world[r][c] = DIRT;
+          } else {
+            // Underground Ores
+            let rand = Math.random();
+            if (rand < 0.03 && r > 35) world[r][c] = DIAMOND;
+            else if (rand < 0.08 && r > 20) world[r][c] = IRON;
+            else if (rand < 0.15) world[r][c] = COAL;
+            else world[r][c] = STONE;
+          }
+        }
+      }
+
+      // Generate Trees
+      for (let c = 4; c < COLS - 4; c += 6) {
+        if (Math.random() > 0.3) {
+          let surfaceR = 8;
+          world[surfaceR - 1][c] = WOOD;
+          world[surfaceR - 2][c] = WOOD;
+          world[surfaceR - 3][c] = WOOD;
+          // Leaves
+          world[surfaceR - 4][c] = LEAVES;
+          world[surfaceR - 4][c - 1] = LEAVES;
+          world[surfaceR - 4][c + 1] = LEAVES;
+        }
+      }
+
+      // Spawn Zombies Underground
+      for (let i = 0; i < 6; i++) {
+        mobs.push({
+          x: Math.random() * (COLS * BLOCK_SIZE - 40) + 20,
+          y: (15 + Math.random() * 30) * BLOCK_SIZE,
+          w: 20, h: 25, vx: 1, hp: 30
+        });
+      }
+    }
+
+    // Core Logic Loop
+    function update() {
+      // Movement
+      if (keys['KeyA'] || keys['ArrowLeft']) player.vx = -player.speed;
+      else if (keys['KeyD'] || keys['ArrowRight']) player.vx = player.speed;
+      else player.vx *= 0.7;
+
+      if ((keys['KeyW'] || keys['Space'] || keys['ArrowUp']) && player.grounded) {
+        player.vy = player.jumpForce;
+        player.grounded = false;
+        sound(250, 'square', 0.1);
+      }
+
+      // Gravity
+      player.vy += 0.45;
+
+      // Horizontal Collision
+      player.x += player.vx;
+      checkBlockCollisions(true);
+
+      // Vertical Collision
+      player.y += player.vy;
+      player.grounded = false;
+      checkBlockCollisions(false);
+
+      // Boundaries
+      if (player.x < 0) player.x = 0;
+      if (player.x + player.w > COLS * BLOCK_SIZE) player.x = COLS * BLOCK_SIZE - player.w;
+
+      // Smooth Camera Following Downward Mining
+      cameraY += (player.y - 200 - cameraY) * 0.1;
+      if (cameraY < 0) cameraY = 0;
+      if (cameraY > (ROWS * BLOCK_SIZE) - canvas.height) cameraY = (ROWS * BLOCK_SIZE) - canvas.height;
+
+      // Handle Mouse Digging & Building
+      handleInteractions();
+
+      // Enemy AI
+      mobs.forEach((mob, idx) => {
+        mob.x += mob.vx;
+        
+        // Simple Wall rebound
+        let c = Math.floor(mob.x / BLOCK_SIZE);
+        let r = Math.floor(mob.y / BLOCK_SIZE);
+        if (world[r] && (world[r][c] !== AIR || world[r][c+1] !== AIR)) mob.vx *= -1;
+
+        // Player Collision Damage
+        if (checkRectCollide(player, mob)) {
+          player.hp -= 0.5;
+          sound(100, 'sawtooth', 0.05);
+          if (player.hp <= 0) {
+            alert('☠️ You Died! Respawning at surface...');
+            player.hp = 100;
+            player.x = 400; player.y = 100;
+          }
+        }
+      });
+
+      updateUI();
+    }
+
+    function checkBlockCollisions(isHorizontal) {
+      let startC = Math.floor(player.x / BLOCK_SIZE);
+      let endC = Math.floor((player.x + player.w) / BLOCK_SIZE);
+      let startR = Math.floor(player.y / BLOCK_SIZE);
+      let endR = Math.floor((player.y + player.h) / BLOCK_SIZE);
+
+      for (let r = startR; r <= endR; r++) {
+        for (let c = startC; c <= endC; c++) {
+          if (world[r] && world[r][c] !== AIR) {
+            let block = { x: c * BLOCK_SIZE, y: r * BLOCK_SIZE, w: BLOCK_SIZE, h: BLOCK_SIZE };
+            if (checkRectCollide(player, block)) {
+              if (isHorizontal) {
+                if (player.vx > 0) player.x = block.x - player.w;
+                if (player.vx < 0) player.x = block.x + block.w;
+              } else {
+                if (player.vy > 0) {
+                  player.y = block.y - player.h;
+                  player.vy = 0;
+                  player.grounded = true;
+                } else if (player.vy < 0) {
+                  player.y = block.y + block.h;
+                  player.vy = 0;
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    function handleInteractions() {
+      let targetC = Math.floor(mouse.x / BLOCK_SIZE);
+      let targetR = Math.floor(mouse.y / BLOCK_SIZE);
+
+      if (targetR < 0 || targetR >= ROWS || targetC < 0 || targetC >= COLS) return;
+
+      // Distance check to player (Reach limit)
+      let pC = Math.floor((player.x + player.w / 2) / BLOCK_SIZE);
+      let pR = Math.floor((player.y + player.h / 2) / BLOCK_SIZE);
+      let dist = Math.hypot(targetC - pC, targetR - pR);
+
+      if (dist > 5) return; // Can't reach further than 5 blocks
+
+      // MINE BLOCK (Left Click)
+      if (mouse.isDown) {
+        let blockId = world[targetR][targetC];
+        if (blockId !== AIR) {
+          // Add to Inventory based on block type
+          if (blockId === WOOD || blockId === LEAVES) inventory.wood++;
+          else if (blockId === DIRT || blockId === GRASS) inventory.dirt++;
+          else if (blockId === STONE || blockId === COAL || blockId === IRON) inventory.stone++;
+          else if (blockId === DIAMOND) inventory.diamond += 2;
+
+          world[targetR][targetC] = AIR; // Destroy block
+          sound(150 + inventory.pickTier * 50, 'square', 0.1);
+          mouse.isDown = false; // Single click per action
+        }
+
+        // Attack Mobs
+        mobs.forEach((m, idx) => {
+          if (checkRectCollide({x: mouse.x, y: mouse.y, w: 5, h: 5}, m)) {
+            m.hp -= 15 * inventory.sword;
+            sound(400, 'sawtooth', 0.1);
+            if (m.hp <= 0) mobs.splice(idx, 1);
+          }
+        });
+      }
+
+      // PLACE BLOCK (Right Click)
+      if (mouse.rightDown) {
+        if (world[targetR][targetC] === AIR) {
+          let blockToPlace = AIR;
+          if (selectedSlot === 1 && inventory.wood > 0) { blockToPlace = WOOD; inventory.wood--; }
+          else if (selectedSlot === 2 && inventory.dirt > 0) { blockToPlace = DIRT; inventory.dirt--; }
+          else if (selectedSlot === 3 && inventory.stone > 0) { blockToPlace = STONE; inventory.stone--; }
+          else if (selectedSlot === 6 && inventory.tnt > 0) { blockToPlace = TNT; inventory.tnt--; triggerTNT(targetR, targetC); }
+
+          if (blockToPlace !== AIR) {
+            world[targetR][targetC] = blockToPlace;
+            sound(300, 'sine', 0.1);
+            mouse.rightDown = false;
+          }
+        }
+      }
+    }
+
+    function triggerTNT(r, c) {
+      setTimeout(() => {
+        sound(80, 'sawtooth', 0.5);
+        // Explode 3x3 grid around TNT
+        for (let dr = -1; dr <= 1; dr++) {
+          for (let dc = -1; dc <= 1; dc++) {
+            if (world[r + dr] && world[r + dr][c + dc]) {
+              world[r + dr][c + dc] = AIR;
+            }
+          }
+        }
+      }, 1000);
+    }
+
+    function checkRectCollide(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    // Render Function
+    function render() {
+      // Clear Screen with Sky Color above ground / Dark below
+      ctx.fillStyle = '#0d1117';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+      ctx.save();
+      ctx.translate(0, -cameraY);
+
+      // Render World Grid
+      for (let r = 0; r < ROWS; r++) {
+        for (let c = 0; c < COLS; c++) {
+          let block = world[r][c];
+          if (block !== AIR) {
+            ctx.fillStyle = BLOCK_COLORS[block];
+            ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            // Block Border Grid
+            ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+            ctx.strokeRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+          } else if (r < 8) {
+            // Sky
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(c * BLOCK_SIZE, r * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+          }
+        }
+      }
+
+      // Mouse Hover Selector Outline
+      let targetC = Math.floor(mouse.x / BLOCK_SIZE);
+      let targetR = Math.floor(mouse.y / BLOCK_SIZE);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(targetC * BLOCK_SIZE, targetR * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+
+      // Render Player
+      ctx.fillStyle = '#55ff55'; // Steve Green Shirt
+      ctx.fillRect(player.x, player.y, player.w, player.h);
+      ctx.fillStyle = '#ffaa00'; // Face
+      ctx.fillRect(player.x + 3, player.y + 3, 12, 8);
+
+      // Render Enemies (Zombies)
+      ctx.fillStyle = '#5555ff';
+      mobs.forEach(m => {
+        ctx.fillRect(m.x, m.y, m.w, m.h);
+      });
+
+      ctx.restore();
+    }
+
+    // Hotbar Selection & UI Update
+    function selectSlot(slotNum) {
+      selectedSlot = slotNum;
+      document.querySelectorAll('.slot').forEach(s => s.classList.remove('active'));
+      const activeSlot = document.querySelector(`.slot[data-slot="${slotNum}"]`);
+      if (activeSlot) activeSlot.classList.add('active');
+    }
+
+    function updateUI() {
+      document.getElementById('uiHp').innerText = Math.round(player.hp);
+      document.getElementById('uiDepth').innerText = `${Math.floor(player.y / BLOCK_SIZE) - 8}m`;
+
+      document.getElementById('cnt-wood').innerText = inventory.wood;
+      document.getElementById('cnt-dirt').innerText = inventory.dirt;
+      document.getElementById('cnt-stone').innerText = inventory.stone;
+      document.getElementById('cnt-diamond').innerText = inventory.diamond;
+      document.getElementById('cnt-sword').innerText = inventory.sword;
+      document.getElementById('cnt-tnt').innerText = inventory.tnt;
+
+      const pickNames = ["Wood Pick", "Stone Pick", "Iron Pick", "Diamond Pick"];
+      document.getElementById('uiTool').innerText = pickNames[inventory.pickTier - 1];
+    }
+
+    // Crafting Upgrade System
+    document.getElementById('craftBtn').addEventListener('click', () => {
+      let choice = prompt(
+        "🛠️ CRAFTING RECIPES:\n" +
+        "1. Upgrade Pickaxe (Cost: 5 Wood + 5 Stone)\n" +
+        "2. Craft Sword (Cost: 3 Wood + 3 Stone)\n" +
+        "3. Craft TNT (Cost: 10 Dirt + 2 Diamond)\n" +
+        "Type 1, 2, or 3 to craft:"
+      );
+
+      if (choice === '1') {
+        if (inventory.wood >= 5 && inventory.stone >= 5) {
+          inventory.wood -= 5; inventory.stone -= 5;
+          inventory.pickTier = Math.min(4, inventory.pickTier + 1);
+          alert('✨ Pickaxe Upgraded!');
+        } else alert('❌ Not enough resources!');
+      } else if (choice === '2') {
+        if (inventory.wood >= 3 && inventory.stone >= 3) {
+          inventory.wood -= 3; inventory.stone -= 3;
+          inventory.sword += 1;
+          alert('⚔️ Sword Upgraded!');
+        } else alert('❌ Not enough resources!');
+      } else if (choice === '3') {
+        if (inventory.dirt >= 10 && inventory.diamond >= 2) {
+          inventory.dirt -= 10; inventory.diamond -= 2;
+          inventory.tnt += 2;
+          alert('🧨 Crafted 2x TNT!');
+        } else alert('❌ Not enough resources!');
+      }
+      updateUI();
+    });
+
+    // Save/Load World JSON File
+    document.getElementById('saveBtn').addEventListener('click', () => {
+      const saveData = JSON.stringify({ world, inventory, playerHp: player.hp }, null, 2);
+      const blob = new Blob([saveData], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `MinecraftWorld_Save.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('loadInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        try {
+          const loadedData = JSON.parse(event.target.result);
+          if (loadedData.world && loadedData.inventory) {
+            world = loadedData.world;
+            inventory = loadedData.inventory;
+            player.hp = loadedData.playerHp || 100;
+            updateUI();
+            alert('🌍 World Loaded Successfully!');
+          }
+        } catch (err) {
+          alert('❌ Invalid Save File!');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // Hotbar Clicks
+    document.querySelectorAll('.slot').forEach(slot => {
+      slot.addEventListener('click', () => {
+        selectSlot(parseInt(slot.getAttribute('data-slot')));
+      });
+    });
+
+    // Main Game Loop
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    // Start Game
+    generateWorld();
+    updateUI();
+    loop();
+  </script>
+</body>
+</html>
