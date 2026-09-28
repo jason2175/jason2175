@@ -186,6 +186,8 @@
       checkpointY: 350
     };
 
+    let gameFinished = false;
+
     const keys = {};
     window.addEventListener('keydown', e => keys[e.code] = true);
     window.addEventListener('keyup', e => keys[e.code] = false);
@@ -308,6 +310,8 @@
 
     // Core Game Loop
     function update() {
+      if (gameFinished) return;
+
       // Input Movement
       if (keys['KeyA'] || keys['ArrowLeft']) {
         player.vx = -player.speed;
@@ -414,18 +418,22 @@
         if (checkCollide(player, e)) hurtPlayer();
       });
 
-      // Exit Portal Check
+      // Exit Portal Check & Redirect Logic
       if (exitPortal && checkCollide(player, exitPortal)) {
         if (gameState.level < 5) {
           gameState.level++;
           sound(523, 'triangle', 0.3);
           buildLevel(gameState.level);
           updateUI();
-        } else {
-          alert('🎉 VICTORY! You completed Pixel Quest and saved the void!');
-          gameState.level = 1;
-          buildLevel(1);
-          updateUI();
+        } else if (!gameFinished) {
+          gameFinished = true;
+          sound(880, 'sine', 0.4);
+
+          alert('🎉 VICTORY! You defeated the Void! Entering target portal in 3 seconds...');
+
+          setTimeout(() => {
+            window.location.href = "1234idk.html";
+          }, 3000);
         }
       }
 
@@ -582,6 +590,7 @@
     document.getElementById('resetBtn').addEventListener('click', () => {
       if (confirm('Are you sure you want to restart your progress?')) {
         gameState = { level: 1, hp: 3, maxHp: 3, gems: 0, deaths: 0, checkpointX: 50, checkpointY: 350 };
+        gameFinished = false;
         buildLevel(1);
         updateUI();
       }
